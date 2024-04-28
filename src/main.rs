@@ -1,26 +1,31 @@
-use std::borrow::Borrow;
+use std::borrow::BorrowMut;
 use std::fmt;
 use std::ops::{Add, Mul};
 
 #[derive(Debug)]
 enum TValue<'a> {
-    flt(f64),
-    norm(Value<'a>),
-    rnorm(&'a Value<'a>),
+    Flt(f64),
+    Norm(Value<'a>),
+    RNorm(&'a Value<'a>),
 }
 
 #[derive(Debug)]
 struct Value<'a> {
     data: f64,
-    // grad: f64,
+    grad: f64,
     // _backward: Box<dyn FnMut()>,
     _prev: Option<Vec<TValue<'a>>>,
-    // _op: String,
+    _op: Option<String>,
 }
 
 impl<'a> Value<'a> {
     fn new(data: f64) -> Self {
-        let mut value = Value { data, _prev: None };
+        let value = Value {
+            data,
+            grad: 0.0000,
+            _prev: None,
+            _op: None,
+        };
         value
     }
 }
@@ -28,26 +33,31 @@ impl<'a> Value<'a> {
 impl<'a> fmt::Display for TValue<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            TValue::norm(data) => write!(f, "({}", data),
-            TValue::rnorm(data) => write!(f, "({}", data),
-            TValue::flt(data) => write!(f, "(Value: {})", data),
+            TValue::Norm(data) => write!(f, "({}", data),
+            TValue::RNorm(data) => write!(f, "({}", data),
+            TValue::Flt(data) => write!(f, "(Value: {})", data),
         }
     }
 }
 impl<'a> fmt::Display for Value<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "(Value: {:.2}, Prev: ", self.data)?;
+        write!(f, "(Value: {:.4}, grad: {}, Prev: ", self.data, self.grad)?;
         if let Some(prev) = &self._prev {
-            write!(f, "->")?;
             for (index, item) in prev.iter().enumerate() {
-                write!(f, "{})", item)?;
+                write!(f, "{},", item)?;
                 if index < prev.len() - 1 {
                     write!(f, "->")?;
                 }
             }
         } else {
-            write!(f, "None)")?;
+            write!(f, "None,")?;
         }
+        if let Some(ope) = &self._op {
+            write!(f, " Op: {})", ope)?;
+        } else {
+            write!(f, " Op: None)")?;
+        }
+
         Ok(())
     } // Displaying value with two decimal places
 }
@@ -61,7 +71,9 @@ where
         let other_data = other.into().unwrap_or(0.0);
         Self {
             data: self.data + other_data,
-            _prev: Some(vec![TValue::norm(self), TValue::flt(other_data)]),
+            grad: 0.0000,
+            _prev: Some(vec![TValue::Norm(self), TValue::Flt(other_data)]),
+            _op: Some("+".to_string()),
         }
     }
 }
@@ -70,7 +82,9 @@ impl<'a> Add<&'a Value<'a>> for Value<'a> {
     fn add(self, other: &'a Value<'a>) -> Self::Output {
         Self {
             data: self.data + other.data,
-            _prev: Some(vec![TValue::norm(self), TValue::rnorm(other)]),
+            grad: 0.0000,
+            _prev: Some(vec![TValue::Norm(self), TValue::RNorm(other)]),
+            _op: Some("+".to_string()),
         }
     }
 }
@@ -79,7 +93,9 @@ impl<'a> Add for Value<'a> {
     fn add(self, other: Self) -> Self::Output {
         Value {
             data: self.data + other.data,
-            _prev: Some(vec![TValue::norm(self), TValue::norm(other)]),
+            grad: 0.0000,
+            _prev: Some(vec![TValue::Norm(self), TValue::Norm(other)]),
+            _op: Some("+".to_string()),
         }
     }
 }
@@ -89,7 +105,9 @@ impl<'a> Add for &'a Value<'a> {
     fn add(self, other: Self) -> Self::Output {
         Value {
             data: self.data + other.data,
-            _prev: Some(vec![TValue::rnorm(self), TValue::rnorm(other)]),
+            grad: 0.0000,
+            _prev: Some(vec![TValue::RNorm(self), TValue::RNorm(other)]),
+            _op: Some("+".to_string()),
         }
     }
 }
@@ -98,7 +116,9 @@ impl<'a> Add<Value<'a>> for &'a Value<'a> {
     fn add(self, other: Value<'a>) -> Self::Output {
         Value {
             data: self.data + other.data,
-            _prev: Some(vec![TValue::rnorm(self), TValue::norm(other)]),
+            grad: 0.0000,
+            _prev: Some(vec![TValue::RNorm(self), TValue::Norm(other)]),
+            _op: Some("+".to_string()),
         }
     }
 }
@@ -111,7 +131,9 @@ where
         let o = other.into();
         Value {
             data: self.data + &o,
-            _prev: Some(vec![TValue::rnorm(self), TValue::flt(o)]),
+            grad: 0.0000,
+            _prev: Some(vec![TValue::RNorm(self), TValue::Flt(o)]),
+            _op: Some("+".to_string()),
         }
     }
 }
@@ -125,7 +147,7 @@ where
 //     fn mul(self, other: T) -> Self::Output {
 //         Self {
 //             data: self.data * other.into(),
-//             _prev: Some(vec![TValue::norm(self), TValue::flt(other.into())]),
+//             _prev: Some(vec![TValue::Norm(self), TValue::Flt(other.into())]),
 //         }
 //     }
 // }
@@ -184,7 +206,7 @@ where
 //     fn add(self, other: T) -> Self::Output {
 //         Value {
 //             data: self.data + other.into(),
-//             _prev: Some(vec![TValue::rnorm(self), TValue::flt(other.into())]),
+//             _prev: Some(vec![TValue::RNorm(self), TValue::Flt(other.into())]),
 //         }
 //     }
 // }
@@ -196,36 +218,64 @@ fn indent(level: usize) -> String {
 
 fn generate_chart<'a>(value: &'a Value<'a>, level: usize) -> String {
     let mut result = String::new();
-    result.push_str(&format!("{}├──(Value: {})\n", indent(level), value.data));
+    if let Some(ope) = &value._op {
+        result.push_str(&format!(
+            "{}├─{}(Value: {}, grad: {})\n",
+            indent(level),
+            ope,
+            value.data,
+            value.grad
+        ));
+    } else {
+        result.push_str(&format!(
+            "{}├─=(Value: {}, grad: {})\n",
+            indent(level),
+            value.data,
+            value.grad
+        ));
+    }
     if let Some(prev) = &value._prev {
         for item in prev {
             match item {
-                TValue::norm(sub_value) => {
+                TValue::Norm(sub_value) => {
                     result.push_str(&generate_chart(sub_value, level + 1));
                 }
-                TValue::rnorm(rsub_value) => {
+                TValue::RNorm(rsub_value) => {
                     result.push_str(&generate_chart(rsub_value, level + 1));
                 }
-                TValue::flt(data) => {
-                    result.push_str(&format!("{}├──(Value: {})\n", indent(level + 1), data));
+                TValue::Flt(data) => {
+                    result.push_str(&format!("{}├─+(Value: {})\n", indent(level + 1), data));
                 }
             }
         }
     }
     result
 }
+
+//Backpropagation
+fn propagate(value: &mut Value) {
+    value.grad = 1.0000;
+    if let Some(prev) = &value._prev {
+        for i in prev.iter() {
+            print!("{}", i)
+        }
+    }
+    print!("No previous");
+}
+
 fn f(x: f64) -> f64 {
     3.00 * f64::powf(x, 2.00) - 4.00 * x + 5.00
 }
 
 fn main() {
-    let a = Value::new(2.00);
-    let b = Value::new(-3.00);
-    let c = Value::new(10.00);
-    let d = &a + c + &b + 1.00;
+    let mut a = Value::new(2.00);
+    let mut b = Value::new(-3.00);
+    let mut c = Value::new(10.00);
+    let mut d = &a + c + &b + 1.00;
     // let result = f(x + h);
     // let num = f(x);
     // let diff = (result - num) / h;
     // println!("a: {} b: {} d(a+b): {}", a, b, d)
+    //propagate(&mut d);
     println!("{}", generate_chart(&d, 1));
 }
