@@ -16,21 +16,20 @@ struct Value {
 
 impl Value {
     fn new(data: f64, label: String) -> Self {
-        let value = Value {
+        Value {
             label,
             data,
             grad: 0.0000,
             _backward: None,
             _prev: None,
             _op: None,
-        };
-        value
+        }
     }
     fn child(value: &Value) -> Option<&Vec<f64>> {
         if let Some(backward) = &value._backward {
-            return Some(backward);
+            Some(backward)
         } else {
-            return None;
+            None
         }
     }
     pub fn pow(mut self, exponent: f64) -> Self {
@@ -38,7 +37,7 @@ impl Value {
         self._op = Some("^".to_string());
         exp._op = Some("^".to_string());
         Value {
-            label: format!("{}^{}", self.label, exponent.to_string()),
+            label: format!("{}^{}", self.label, exponent),
             data: self.data.powf(exponent),
             grad: 0.0,
             _backward: Some(vec![self.data, exponent]),
@@ -49,7 +48,8 @@ impl Value {
             _op: None,
         }
     }
-    pub fn exp(mut self) -> Self {
+    #[allow(dead_code)]
+    pub fn expv(mut self) -> Self {
         let mut exp = Value::new(consts::E, "Exp".to_string());
         self._op = Some("e".to_string());
         exp._op = Some("e".to_string());
@@ -70,7 +70,7 @@ impl Value {
         let e = (self.data * 2.00).exp();
         let data_o = (e + -1.00) / (e + 1.00);
         Value {
-            label: format!("Tan({})", "Activation".to_string()),
+            label: format!("Tan({})", "Activation"),
             data: data_o,
             grad: 0.00,
             _backward: Some(vec![self.data]),
@@ -249,7 +249,7 @@ fn indent(level: usize) -> String {
     INDENT.repeat(level)
 }
 
-fn generate_chart<'a>(value: &Value, level: usize) -> String {
+fn generate_chart(value: &Value, level: usize) -> String {
     let mut result = String::new();
     if let Some(ope) = &value._op {
         result.push_str(&format!(
@@ -272,7 +272,7 @@ fn generate_chart<'a>(value: &Value, level: usize) -> String {
     if let Some(prev) = &value._prev {
         for item in prev {
             let item_rc = item.borrow();
-            result.push_str(&generate_chart(&*item_rc, level + 1));
+            result.push_str(&generate_chart(&item_rc, level + 1));
         }
     }
     result
@@ -292,9 +292,7 @@ fn propagate(value: &mut Value) {
                         "+" => i_rc.grad = bvalue.grad,
                         "*" => {
                             if let Some(backward) = Value::child(bvalue) {
-                                if let Some(other) =
-                                    backward.iter().filter(|x| **x != i_rc.data).next()
-                                {
+                                if let Some(other) = backward.iter().find(|x| **x != i_rc.data) {
                                     i_rc.grad = *other * bvalue.grad;
                                 } else {
                                     i_rc.grad = backward.first().unwrap() * bvalue.grad;
@@ -303,9 +301,7 @@ fn propagate(value: &mut Value) {
                         }
                         "^" => {
                             if let Some(backward) = Value::child(bvalue) {
-                                if let Some(other) =
-                                    backward.iter().filter(|x| **x != i_rc.data).next()
-                                {
+                                if let Some(other) = backward.iter().find(|x| **x != i_rc.data) {
                                     i_rc.grad =
                                         *other * (i_rc.data.powf(*other - 1.00)) * bvalue.grad;
                                 } else {
@@ -322,7 +318,7 @@ fn propagate(value: &mut Value) {
                 } else {
                     i_rc.grad = 1.0000;
                 }
-                backward(&mut *i_rc)
+                backward(&mut i_rc)
             }
         }
     }
@@ -420,7 +416,7 @@ mod tests {
     fn test_activation_functions() {
         // Test activation functions
         let value = Value::new(0.5, "value".to_string());
-        let result_exp = value.clone().exp();
+        let result_exp = value.clone().expv();
         let result_tanh = value.tanh();
 
         // Assert the results of activation functions
