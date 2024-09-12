@@ -277,6 +277,16 @@ pub fn generate_chart(value: &Value, level: usize) -> String {
     }
     result
 }
+pub fn generate_chart_for_vec(values: &[Value], level: usize) -> String {
+    let mut result = String::new();
+
+    for (i, value) in values.iter().enumerate() {
+        result.push_str(&format!("{}Value {}:\n", indent(level), i));
+        result.push_str(&generate_chart(value, level + 1));
+    }
+
+    result
+}
 
 //Backpropagation
 pub fn propagate(value: &mut Value) {

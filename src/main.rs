@@ -1,4 +1,4 @@
-use micrograd::{generate_chart, propagate, Value};
+use micrograd::{generate_chart_for_vec, propagate, Value};
 use rand::Rng;
 use std::fmt;
 
@@ -23,7 +23,12 @@ impl Neuron {
         let bias = Value::new(rng.gen_range(-1.00..1.00), format!("{}_bias", neuron_name));
         Self { weight, bias }
     }
-    fn n(self, x: &[f64]) -> Value {
+    pub fn n(self, x: &[f64]) -> Value {
+        assert_eq!(
+            x.len(),
+            self.weight.len(),
+            "Input size must match number of weights."
+        );
         // Calculate weighted sum
         let mut weighted_sum: Value = Value::new(0.00, "init".to_string());
         for (w, &x_val) in self.weight.into_iter().zip(x.into_iter()) {
@@ -52,6 +57,37 @@ impl fmt::Display for Neuron {
     }
 }
 
+#[derive(Debug)]
+struct Layer {
+    neurons: Vec<Neuron>,
+}
+
+impl Layer {
+    fn new(nin: i64, nout: i64, layer_name: &str) -> Layer {
+        let neurons = (0..nout)
+            .map(|i| Neuron::new(nin, &format!("{}_neuron_{:02}", layer_name, i)))
+            .collect();
+        Self { neurons }
+    }
+    pub fn n(self, x: &[f64]) -> Vec<Value> {
+        let mut outputs = Vec::with_capacity(self.neurons.len());
+        for neuron in self.neurons {
+            outputs.push(neuron.n(x));
+        }
+        outputs
+    }
+}
+
+impl fmt::Display for Layer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "Layer with {} neurons:", self.neurons.len())?;
+        for (i, neuron) in self.neurons.iter().enumerate() {
+            writeln!(f, "  Neuron {}: {}", i, neuron)?;
+        }
+        Ok(())
+    }
+}
+
 fn main() {
     // Init value
     // let x1 = Value::new(4.00, "x1".to_owned());
@@ -69,8 +105,9 @@ fn main() {
     // propagate(&mut o);
     // println!("{}", generate_chart(&o, 1));
     let x = [2.00, 3.00];
-    let n = Neuron::new(2, "test");
-    let mut y = n.n(&x);
-    propagate(&mut y);
-    println!("{}", generate_chart(&y, 0));
+    let n = Layer::new(2, 5, "test");
+
+    let y = n.n(&x);
+    //propagate(&mut y);
+    println!("{}", generate_chart_for_vec(&y, 0));
 }
